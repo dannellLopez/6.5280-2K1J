@@ -1,0 +1,5 @@
+# hold LEFT, then go UP, RIGHT, DOWN (t = seconds since start)
+{"t": 1.0, "action": "LEFT"}
+{"t": 3.0, "action": "UP"}
+{"t": 5.0, "action": "RIGHT"}
+{"t": 7.0, "action": "DOWN"}
