@@ -1,0 +1,5 @@
+# button ids for the stub catalog: 0 Up, 1 Down, 2 Left, 3 Right (t = seconds since start)
+{"t": 1.0, "ids": [2]}
+{"t": 3.0, "ids": [0]}
+{"t": 5.0, "ids": [3]}
+{"t": 7.0, "ids": [1]}

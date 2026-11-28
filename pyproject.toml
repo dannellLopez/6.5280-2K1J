@@ -1,0 +1,25 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "cloudpac"
+version = "0.1.0"
+description = "Cloud gaming scaffold: a server hosts a Pac-Man frame source and streams frames to a thin client."
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.24", "Pillow>=10.0"]
+
+[project.optional-dependencies]
+client = ["pygame>=2.5"]
+dev = ["pytest>=7", "pygame>=2.5"]
+
+[project.scripts]
+cloudpac-server = "cloudpac.server:main"
+cloudpac-client = "cloudpac.client:main"
+cloudpac-play = "cloudpac.play:main"
+
+[tool.setuptools]
+packages = ["cloudpac", "cloudpac.sources"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
