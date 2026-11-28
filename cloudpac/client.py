@@ -304,19 +304,21 @@ def run_gui(args: argparse.Namespace) -> dict:
     src_w, src_h = client.params["width"], client.params["height"]
     pygame.init()
     screen = None
-    font = pygame.font.SysFont("segoeui", 18)
-    small = pygame.font.SysFont("segoeui", 14)
-    hint_font = pygame.font.SysFont("segoeui", 11)
     info = pygame.display.Info()
-    max_w = int((info.current_w or 1280) * 0.96)
-    max_h = int((info.current_h or 800) * 0.88)
+    desk_w = info.current_w if info.current_w and info.current_w > 1 else 1280
+    desk_h = info.current_h if info.current_h and info.current_h > 1 else 800
+    screen = pygame.display.set_mode((desk_w, desk_h), pygame.FULLSCREEN)
+    screen_w, screen_h = screen.get_size()
+    btn_h = max(56, min(120, screen_h // 8))
+    font = pygame.font.SysFont("segoeui", max(18, int(btn_h * 0.36)))
+    small = pygame.font.SysFont("segoeui", max(16, int(btn_h * 0.22)))
+    hint_font = pygame.font.SysFont("segoeui", max(13, int(btn_h * 0.2)))
     text_widths = [font.size(button.label)[0] for button in client.controls.buttons]
     layout = layout_window(
         client.controls.buttons, text_widths, src_w, src_h,
-        max_w=max(1, max_w), max_h=max(1, max_h), requested_scale=args.scale,
+        max_w=screen_w, max_h=screen_h, btn_h=btn_h, status_h=small.get_height() + 10,
     )
     placed = layout.buttons
-    screen = pygame.display.set_mode((layout.width, layout.height))
     pygame.display.set_caption(f"cloudpac — {client.params.get('game', args.host)}")
     clock = pygame.time.Clock()
     state = ControlState(client.controls)
@@ -392,7 +394,7 @@ def run_gui(args: argparse.Namespace) -> dict:
             lat = client.stats.latencies_ms
             lat_s = f"{lat[-1]:.0f} ms" if lat else "--"
             status = small.render(f"{fps:.0f} fps    input->frame {lat_s}", True, _STATUS)
-            screen.blit(status, (12, layout.height - 30))
+            screen.blit(status, (20, layout.height - small.get_height() - 14))
             pygame.display.flip()
             clock.tick(60)
     finally:
@@ -411,7 +413,7 @@ def main() -> None:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--host", default="127.0.0.1", help="server address (IP or hostname)")
     p.add_argument("--port", type=int, default=DEFAULT_PORT)
-    p.add_argument("--scale", type=int, default=3, help="window zoom factor")
+    p.add_argument("--scale", type=int, default=3, help="unused; the window fills the device")
     p.add_argument("--headless", action="store_true", help="no window; print stats (for testing)")
     p.add_argument("--duration", type=float, default=None, help="stop after this many seconds (headless default: 10)")
     p.add_argument("--replay", help="replay button ids from a trace file")

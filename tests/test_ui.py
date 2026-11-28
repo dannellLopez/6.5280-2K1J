@@ -46,26 +46,27 @@ def test_hold_many_releases_only_the_source_that_let_go():
     assert state.held == frozenset()
 
 
-def test_game_screen_sits_above_the_buttons():
+def test_layout_fills_the_device_and_keeps_aspect():
     layout = layout_window(
-        PACMAN_CONTROLS.buttons, [20, 20, 20, 20], 228, 276,
-        max_w=1200, max_h=1100, requested_scale=3,
+        PACMAN_CONTROLS.buttons, [40, 70, 50, 70], 228, 276, max_w=1920, max_h=1080
     )
-    assert layout.scale == 3
-    assert (layout.view_w, layout.view_h) == (228 * 3, 276 * 3)
-    assert layout.view_y >= layout.bezel_y
-    assert layout.bezel_y + layout.bezel_h <= min(button.y for button in layout.buttons)
-    assert layout.width <= 1200 and layout.height <= 1100
+    assert (layout.width, layout.height) == (1920, 1080)
+    assert abs(layout.view_w / layout.view_h - 228 / 276) < 0.02
+    assert layout.view_h > 700
+    play_top = min(button.y for button in layout.buttons)
+    assert layout.bezel_y + layout.bezel_h <= play_top
+    assert min(button.x for button in layout.buttons) < 40
+    assert max(button.x + button.w for button in layout.buttons) > 1920 - 40
+    assert min(button.h for button in layout.buttons) >= 56
 
 
-def test_game_screen_shrinks_to_fit_the_display():
+def test_portrait_screen_still_fills_and_fits_the_game():
     layout = layout_window(
-        PACMAN_CONTROLS.buttons, [20, 20, 20, 20], 228, 276,
-        max_w=600, max_h=500, requested_scale=3,
+        PACMAN_CONTROLS.buttons, [20, 20, 20, 20], 228, 276, max_w=600, max_h=1100
     )
-    assert layout.scale == 1
-    assert layout.width <= 600 and layout.height <= 500
-    assert layout.view_w == 228 and layout.view_h == 276
+    assert (layout.width, layout.height) == (600, 1100)
+    assert layout.view_w > 500
+    assert layout.view_y + layout.view_h <= min(button.y for button in layout.buttons)
 
 
 def test_pacman_keys_map_onto_button_ids():

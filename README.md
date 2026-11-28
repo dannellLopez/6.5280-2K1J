@@ -44,8 +44,9 @@ machine. Open TCP port `5280` in the server's firewall / cloud security group.
 python -m cloudpac.play
 ```
 
-That opens the game display: the streamed frame in a screen above the buttons.
-Esc closes the window and stops the local server. The same two processes with
+That opens a fullscreen window on the device: the streamed frame as large as
+the screen allows, and the buttons in a strip across the bottom. Esc closes
+it and stops the local server. The same two processes with
 no window:
 
 ```bash

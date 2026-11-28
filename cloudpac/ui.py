@@ -84,13 +84,13 @@ def layout_buttons(
 
 @dataclass(frozen=True)
 class WindowLayout:
-    """The game screen and the button bar in one window.
+    """The game screen and the button bar filling one device display.
 
-    `view_*` is the rectangle the received frame is drawn into. `bezel_*` is
-    the frame around that screen. Buttons start below the bezel.
+    `view_*` is the rectangle the received frame is drawn into, as large as
+    the area above the buttons allows without stretching the picture.
+    `bezel_*` is the frame around that screen. Buttons span the full width.
     """
 
-    scale: int
     width: int
     height: int
     view_x: int
@@ -104,6 +104,12 @@ class WindowLayout:
     buttons: tuple[PlacedButton, ...]
 
 
+def _fit_frame(src_w: int, src_h: int, box_w: int, box_h: int) -> tuple[int, int]:
+    """Largest size with the source aspect ratio that fits in the box."""
+    scale = min(box_w / src_w, box_h / src_h)
+    return max(1, min(box_w, int(src_w * scale))), max(1, min(box_h, int(src_h * scale)))
+
+
 def layout_window(
     buttons: tuple[Button, ...] | list[Button],
     text_widths: list[int] | tuple[int, ...],
@@ -112,33 +118,46 @@ def layout_window(
     *,
     max_w: int,
     max_h: int,
-    requested_scale: int = 3,
-    margin: int = 16,
-    bezel: int = 10,
+    margin: int = 20,
+    bezel: int = 12,
+    btn_h: int | None = None,
+    status_h: int = 28,
+    pad: int = 12,
+    gap: int = 10,
 ) -> WindowLayout:
-    """Fit the game screen on the display, then place the buttons under it.
+    """Fill the device. Buttons take a full-width strip; the game fills the rest.
 
-    Scale starts at `requested_scale` and steps down until the window fits
-    `max_w` by `max_h`. It never goes below 1.
+    The picture keeps its aspect ratio, so a tall game on a wide screen has
+    bars on the sides instead of a stretched maze.
     """
-    if requested_scale < 1 or src_w < 1 or src_h < 1:
-        raise ValueError("scale and frame size must be positive")
-    scale = requested_scale
-    while True:
-        view_w, view_h = src_w * scale, src_h * scale
-        width = margin + bezel + view_w + bezel + margin
-        view_x = margin + bezel
-        view_y = margin + bezel
-        buttons_y = view_y + view_h + bezel
-        placed = layout_buttons(buttons, x=0, y=buttons_y, width=width, text_widths=text_widths)
-        height = buttons_y + chrome_height(placed, origin_y=buttons_y)
-        if scale == 1 or (width <= max_w and height <= max_h):
-            return WindowLayout(
-                scale, width, height, view_x, view_y, view_w, view_h,
-                margin, margin, width - 2 * margin, bezel + view_h + bezel,
-                tuple(placed),
-            )
-        scale -= 1
+    if max_w < 1 or max_h < 1 or src_w < 1 or src_h < 1:
+        raise ValueError("screen and frame size must be positive")
+    if btn_h is None:
+        btn_h = max(56, min(120, max_h // 8))
+    width, height = max_w, max_h
+    draft = layout_buttons(
+        buttons, x=0, y=0, width=width, text_widths=text_widths, pad=pad, gap=gap, btn_h=btn_h
+    )
+    chrome = chrome_height(draft, origin_y=0, pad=pad, status_h=status_h)
+    buttons_y = max(0, height - chrome)
+    placed = tuple(layout_buttons(
+        buttons, x=0, y=buttons_y, width=width, text_widths=text_widths, pad=pad, gap=gap, btn_h=btn_h
+    ))
+    region_w = max(1, width - 2 * margin)
+    region_bottom = buttons_y if placed else height - margin
+    region_h = max(1, region_bottom - margin - bezel)
+    view_w, view_h = _fit_frame(src_w, src_h, region_w, region_h)
+    view_x = margin + (region_w - view_w) // 2
+    view_y = margin + max(0, (region_h - view_h) // 2)
+    bezel_x = max(0, view_x - bezel)
+    bezel_y = max(0, view_y - bezel)
+    bezel_r = min(width, view_x + view_w + bezel)
+    bezel_b = min(height, view_y + view_h + bezel)
+    return WindowLayout(
+        width, height, view_x, view_y, view_w, view_h,
+        bezel_x, bezel_y, bezel_r - bezel_x, bezel_b - bezel_y,
+        placed,
+    )
 
 
 def chrome_height(placed: list[PlacedButton], *, origin_y: int, pad: int = 10, status_h: int = 22) -> int:
