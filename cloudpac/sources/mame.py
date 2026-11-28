@@ -8,8 +8,9 @@ core (e.g. via the `libretro.py` package) because libretro exposes
 `-autoboot_script` is the alternative, but it has no cheap save/restore.
 
 To implement: subclass `FrameSource`, load the ROM from `roms/` (supplied by
-the user, never committed), map `Action` onto joystick inputs, run one emulated
-frame per `step()`, and return the screen pixels from `render()`.
+the user, never committed), publish a button catalog from `controls()`, map
+those button ids onto joystick inputs, run one emulated frame per `step()`,
+and return the screen pixels from `render()`.
 """
 
 from __future__ import annotations
@@ -24,10 +25,13 @@ class MameFrameSource(FrameSource):
             "or see cloudpac/sources/mame.py and the README for how to add one."
         )
 
+    def controls(self):  # pragma: no cover
+        raise NotImplementedError
+
     def reset(self) -> None:  # pragma: no cover
         raise NotImplementedError
 
-    def step(self, action) -> None:  # pragma: no cover
+    def step(self, held) -> None:  # pragma: no cover
         raise NotImplementedError
 
     def render(self):  # pragma: no cover

@@ -17,8 +17,8 @@ import time
 from typing import Callable
 
 from . import DEFAULT_PORT
-from .actions import Action
 from .codec import encode_frame
+from .controls import normalize_held
 from .protocol import (
     MSG_BYE,
     MSG_FEEDBACK,
@@ -86,13 +86,14 @@ class StreamServer:
                 log.warning("bad handshake from %s", peer)
                 return
             source = self.source_factory()
+            catalog = source.controls()
             writer.write(
                 pack_hello(
                     game=self.game_name, width=source.width, height=source.height,
-                    fps=self.fps, codec="jpeg",
+                    fps=self.fps, codec="jpeg", controls=catalog.to_json(),
                 )  # fmt: skip
             )
-            log.info("client connected: %s", peer)
+            log.info("client connected: %s (%s, %d buttons)", peer, catalog.mode, len(catalog.buttons))
             await self._session(reader, writer, source)
         except (asyncio.IncompleteReadError, ConnectionError, asyncio.TimeoutError):
             pass
@@ -105,16 +106,18 @@ class StreamServer:
                 await writer.wait_closed()
 
     async def _session(self, reader, writer, source: FrameSource) -> None:
-        state = {"action": Action.NONE, "seq": 0, "bye": False}
+        catalog = source.controls()
+        valid = {button.id for button in catalog.buttons}
+        state = {"held": frozenset(), "seq": 0, "bye": False}
 
         async def read_loop() -> None:
             while True:
                 msg_type, payload = await read_message(reader)
                 if msg_type == MSG_INPUT:
-                    seq, action, _client_ts = unpack_input(payload)
+                    seq, _client_ts, ids = unpack_input(payload)
                     if seq >= state["seq"]:
                         state["seq"] = seq
-                        state["action"] = Action(action)
+                        state["held"] = normalize_held(catalog.mode, valid, ids)
                 elif msg_type == MSG_FEEDBACK:
                     fb = unpack_feedback(payload)
                     log.debug("feedback: %s", fb)
@@ -129,8 +132,7 @@ class StreamServer:
         last_report = time.monotonic()
         try:
             while not reader_task.done():
-                action, state["action"] = state["action"], Action.NONE
-                source.step(action)
+                source.step(state["held"])
                 if writer.transport.get_write_buffer_size() > MAX_BACKLOG_BYTES:
                     dropped += 1
                 else:
@@ -181,6 +183,8 @@ def main() -> None:
 
     async def run() -> None:
         await server.start()
+        # Local launcher reads this line. It is not part of the wire protocol.
+        print(f"CLOUDPAC_READY port={server.port}", flush=True)
         await server.serve_forever()
 
     with contextlib.suppress(KeyboardInterrupt):

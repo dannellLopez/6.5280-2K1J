@@ -13,12 +13,14 @@ the same (state, input sequence) always produces the same frames.
 from __future__ import annotations
 
 import copy
+from collections.abc import Collection
 from dataclasses import dataclass, field
 from typing import Any
 
 import numpy as np
 
 from ..actions import Action
+from ..controls import SELECT_ONE, Button, Controls
 from .base import FrameSource
 
 MAZE = [
@@ -55,6 +57,28 @@ GHOST_PERIOD = 5
 FREEZE_TICKS = 20  # pause after losing a life / starting a level
 GAME_OVER_TICKS = 90
 START_LIVES = 3
+
+BTN_UP = 0
+BTN_DOWN = 1
+BTN_LEFT = 2
+BTN_RIGHT = 3
+
+PACMAN_CONTROLS = Controls(
+    SELECT_ONE,
+    (
+        Button(BTN_UP, "Up", ("up", "w")),
+        Button(BTN_DOWN, "Down", ("down", "s")),
+        Button(BTN_LEFT, "Left", ("left", "a")),
+        Button(BTN_RIGHT, "Right", ("right", "d")),
+    ),
+)
+
+_BUTTON_ACTION = {
+    BTN_UP: Action.UP,
+    BTN_DOWN: Action.DOWN,
+    BTN_LEFT: Action.LEFT,
+    BTN_RIGHT: Action.RIGHT,
+}
 
 DELTAS = {
     Action.UP: (-1, 0),
@@ -122,6 +146,9 @@ class StubPacman(FrameSource):
     def tick(self) -> int:  # type: ignore[override]
         return self._s.tick
 
+    def controls(self) -> Controls:
+        return PACMAN_CONTROLS
+
     def reset(self) -> None:
         self._s = _State(rng=self.seed)
         self._new_round()
@@ -144,9 +171,15 @@ class StubPacman(FrameSource):
         s.ghosts = [[r, c, r, c, Action.NONE] for r, c in GHOST_STARTS]
         s.freeze = FREEZE_TICKS
 
-    def step(self, action: Action) -> None:
+    def step(self, held: Collection[int]) -> None:
         s = self._s
         s.tick += 1
+        action = Action.NONE
+        for button_id in sorted(held):
+            mapped = _BUTTON_ACTION.get(button_id)
+            if mapped is not None:
+                action = mapped
+                break
         if s.game_over:
             s.game_over -= 1
             if s.game_over == 0:

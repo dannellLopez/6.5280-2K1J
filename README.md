@@ -2,7 +2,7 @@
 
 A server hosts a Pac-Man game, captures a frame every tick, encodes it and
 streams it over the network. A thin client on the player's machine displays the
-frames and sends keyboard input back. This is the scaffolding for the project in
+frames and sends button presses back. This is the scaffolding for the project in
 the design spec ("6.5820 Project Proposal"): speculative rendering, deadline-aware
 frame scheduling and adaptive pacing/bitrate are **not** implemented yet — this
 repo is the working baseline stream they plug into.
@@ -30,10 +30,27 @@ python -m cloudpac.server --host 0.0.0.0 --port 5280
 python -m cloudpac.client --host <SERVER_IP_OR_HOSTNAME> --port 5280
 ```
 
-Steer with arrow keys or WASD; Esc quits. The server address is the only thing
-you need to change to play against a remote machine. Open TCP port `5280` in the
-server's firewall / cloud security group. Running both on one machine:
-`--host 127.0.0.1` (the client default).
+The window shows the streamed frames and one button for each control the server
+advertises. Pac-Man advertises four: Up, Down, Left, Right. Click a button, or
+use its keys (arrows or WASD). Esc quits. A different game can advertise a
+different number of buttons; the client builds the bar from that catalog.
+
+The server address is the only thing you change to play against a remote
+machine. Open TCP port `5280` in the server's firewall / cloud security group.
+
+**Both on this machine** (a server process and a client process):
+
+```bash
+python -m cloudpac.play
+```
+
+That opens the game display: the streamed frame in a screen above the buttons.
+Esc closes the window and stops the local server. The same two processes with
+no window:
+
+```bash
+python -m cloudpac.play --headless --duration 5 --random-inputs
+```
 
 The client needs `numpy`, `Pillow` and `pygame`; the server only `numpy` and `Pillow`.
 
@@ -56,8 +73,8 @@ Server flags: `--fps` (default 30), `--quality` (JPEG, default 80), `--source st
 
 ```
  client machine                                     server machine
-┌────────────────────────┐   INPUT (seq, action)   ┌──────────────────────────────┐
-│ keyboard / replay trace│ ───────────────────────▶│ session: latest input        │
+┌────────────────────────┐  INPUT (seq, button ids) ┌──────────────────────────────┐
+│ buttons / keys / replay│ ───────────────────────▶│ session: latest button set  │
 │                        │   FEEDBACK (rx stats)   │   │                          │
 │ decode JPEG, display   │ ───────────────────────▶│   ▼                          │
 │ measure input→frame ms │◀─────────────────────── │ FrameSource.step → render    │
@@ -80,11 +97,14 @@ Server flags: `--fps` (default 30), `--quality` (JPEG, default 80), `--source st
 
 ### Code map
 
-- `cloudpac/sources/base.py` — `FrameSource`: `reset / step(action) / render / snapshot / restore`. The only thing the server knows about the game. Speculation will use `snapshot()` → `step(guessed inputs)` → `render()` → `restore()`.
+- `cloudpac/sources/base.py` — `FrameSource`: `controls / reset / step(held button ids) / render / snapshot / restore`. The only thing the server knows about the game. Speculation will use `snapshot()` → `step(guessed inputs)` → `render()` → `restore()`.
 - `cloudpac/sources/stub_pacman.py` — default, ROM-free Pac-Man-like game (own maze/sprites, 2 ghosts, lives, score).
 - `cloudpac/sources/mame.py` — placeholder for an emulator-backed source; raises `NotImplementedError`.
-- `cloudpac/protocol.py` — wire format (length-prefixed binary messages over one TCP connection; documented at the top of the file).
-- `cloudpac/server.py` / `cloudpac/client.py` — as described above; one independent game session per client connection.
+- `cloudpac/protocol.py` — wire format (length-prefixed binary messages over one TCP connection; documented at the top of the file). INPUT carries a set of button ids. HELLO carries the control catalog. Unknown keys, unknown message types, and trailing payload bytes are ignored.
+- `cloudpac/controls.py` — the catalog: N buttons, `select_one` or `hold_many`.
+- `cloudpac/ui.py` — button layout and press/release rules, with no pygame import.
+- `cloudpac/server.py` / `cloudpac/client.py` — as described above; one independent game session per client connection. The client draws the catalog; it does not hardcode four directions.
+- `cloudpac/play.py` — start a local server process and a client process against it.
 
 ## Emulator options (and how to supply ROMs)
 
@@ -124,7 +144,7 @@ the windowed client under SDL's dummy video driver.
 - **Which emulator / is an emulator required?** Spec question (1) asks whether a deterministic game with replayed inputs suffices; the scaffold assumes yes, with the stub as the primary source. A real emulator source is optional.
 - **Determinism and state capture** for the chosen emulator: can the core snapshot/restore every frame cheaply enough for several speculative branches per tick? Unknown until a core is chosen and benchmarked.
 - **Tick model:** one `step()` = one game tick = one frame at a fixed 30 fps. The arcade Pac-Man runs at ~60 Hz; if an emulator is used, pick the fps and input-hold semantics (held direction vs per-frame joystick) to match.
-- **Inputs:** discrete actions UP/DOWN/LEFT/RIGHT/NONE; `NONE` means "keep the last direction". Pac-Man-style sticky direction is a game rule, not a transport rule.
+- **Inputs:** the server advertises N buttons in the HELLO `controls` catalog. The client sends the set of active button ids and keeps doing so for any N. `select_one` (Pac-Man's four directions) keeps the last button selected; `hold_many` sends whatever is currently held. Inside the stub, a direction is sticky: an empty set does not clear it. That is a game rule, not a transport rule.
 - **Transport:** a single TCP connection for simplicity. TCP head-of-line blocking will distort latency/loss experiments (spec's loss/jitter/pacing); a UDP-based or QUIC transport is likely needed for the later phases.
 - **Security:** no authentication or encryption; do not expose the port to the open internet beyond experiments.
 - **Cloud deployment (spec question 4)** is not addressed; the server is a plain Python process.

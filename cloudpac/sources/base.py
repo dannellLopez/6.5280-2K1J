@@ -9,11 +9,12 @@ sequence, render, then roll back.
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from collections.abc import Collection
 from typing import Any
 
 import numpy as np
 
-from ..actions import Action
+from ..controls import Controls
 
 
 class FrameSource(ABC):
@@ -24,12 +25,16 @@ class FrameSource(ABC):
     tick: int
 
     @abstractmethod
+    def controls(self) -> Controls:
+        """The N buttons this game accepts. Stable for the life of the source."""
+
+    @abstractmethod
     def reset(self) -> None:
         """Start a fresh game."""
 
     @abstractmethod
-    def step(self, action: Action) -> None:
-        """Advance the game by exactly one tick with `action` as the held input."""
+    def step(self, held: Collection[int]) -> None:
+        """Advance one tick. `held` is the set of button ids currently active."""
 
     @abstractmethod
     def render(self) -> np.ndarray:

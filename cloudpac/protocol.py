@@ -2,10 +2,21 @@
 
     message := type:u8  length:u32  payload[length]          (network byte order)
 
+The layout below is the stable contract. A new game changes the HELLO control
+catalog (how many buttons, their labels, select_one vs hold_many). It does not
+need a new INPUT layout. Readers ignore unknown HELLO keys, unknown message
+types, and bytes trailing a known payload, so fields can be appended later.
+
 Message types
-    HELLO     json. client -> server first ({"proto", "client"}), server replies
-              with stream parameters ({"proto", "game", "width", "height", "fps", "codec"}).
-    INPUT     client -> server: seq:u32 action:u8 client_ts:f64
+    HELLO     json.
+              client -> server first: {"proto", "client"}
+              server -> client: {"proto", "game", "width", "height", "fps", "codec",
+                "controls": {"mode": "select_one"|"hold_many",
+                             "buttons": [{"id": int, "label": str, "keys": [str, ...]}]}
+              }
+    INPUT     client -> server. The set replaces the previous set; the server
+              keeps the set with the highest seq.
+              seq:u32  client_ts:f64  count:u16  ids:u16[count]
     FRAME     server -> client: FrameHeader + encoded image bytes
     FEEDBACK  client -> server: periodic receive statistics (input for future
               adaptive pacing / bitrate control)
@@ -30,7 +41,9 @@ import json
 import struct
 from dataclasses import dataclass
 
-PROTO_VERSION = 1
+from .controls import MAX_BUTTONS
+
+PROTO_VERSION = 2
 
 MSG_HELLO = 1
 MSG_INPUT = 2
@@ -41,7 +54,7 @@ MSG_BYE = 5
 FLAG_SPECULATIVE = 0x01
 
 _MSG = struct.Struct("!BI")
-_INPUT = struct.Struct("!IBd")
+_INPUT_HEAD = struct.Struct("!IdH")  # seq, client_ts, count; ids follow, trailing bytes ignored
 _FRAME = struct.Struct("!IIIdIBB")
 _FEEDBACK = struct.Struct("!IIQI")
 
@@ -92,12 +105,30 @@ def unpack_hello(payload: bytes) -> dict:
     return json.loads(payload.decode())
 
 
-def pack_input(seq: int, action: int, client_ts: float) -> bytes:
-    return pack_message(MSG_INPUT, _INPUT.pack(seq, int(action), client_ts))
+def pack_input(seq: int, buttons, client_ts: float) -> bytes:
+    ids = tuple(int(b) for b in buttons)
+    if len(ids) > MAX_BUTTONS:
+        raise ValueError(f"too many buttons in one input: {len(ids)}")
+    if any(i < 0 or i > 0xFFFF for i in ids):
+        raise ValueError("button id out of range 0..65535")
+    payload = _INPUT_HEAD.pack(seq, float(client_ts), len(ids))
+    if ids:
+        payload += struct.pack(f"!{len(ids)}H", *ids)
+    return pack_message(MSG_INPUT, payload)
 
 
-def unpack_input(payload: bytes) -> tuple[int, int, float]:
-    return _INPUT.unpack(payload)
+def unpack_input(payload: bytes) -> tuple[int, float, tuple[int, ...]]:
+    """Return (seq, client_ts, button ids). Bytes after the ids are ignored."""
+    if len(payload) < _INPUT_HEAD.size:
+        raise ValueError("short INPUT payload")
+    seq, client_ts, count = _INPUT_HEAD.unpack_from(payload)
+    if count > MAX_BUTTONS:
+        raise ValueError(f"too many buttons in one input: {count}")
+    end = _INPUT_HEAD.size + count * 2
+    if len(payload) < end:
+        raise ValueError("short INPUT payload")
+    ids = struct.unpack_from(f"!{count}H", payload, _INPUT_HEAD.size) if count else ()
+    return seq, float(client_ts), ids
 
 
 def pack_frame(header: FrameHeader, image: bytes) -> bytes:
